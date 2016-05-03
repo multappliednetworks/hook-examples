@@ -1,0 +1,48 @@
+#!/bin/bash
+# Add port forward rules. Port forward functionality defined here takes precedence over CPE NAT IP functionality. You can forward ports to hosts other than the target of the CPE NAT IP.
+#
+# Environment variables:
+#   ID: the CPE NAT IP ID
+#   BOND_ID: the ID of the CPE NAT IP's bond
+#   IP: the IP address
+#   DEST_NAT_IP: The NAT IP address
+#   DEST_NAT_NETMASK: The NAT IP netmask
+PORT_FORWARDS_CHAIN="port_forwards"
+
+start () {
+    remove 2> /dev/null
+    iptables -t nat -N ${PORT_FORWARDS_CHAIN} # Create port forwards chain
+
+################## START CUSTOM PORT FORWARD CONFIG HERE ##################
+    # This rule sends incoming traffic to the CPE NAT IP, port 3390, to private IP 10.100.0.180, port 3389.
+    iptables -t nat -I ${PORT_FORWARDS_CHAIN} -p tcp --dport 3390 -m comment --comment "Mickey's workstation RDP" -j DNAT --to-destination 10.100.0.180:3389
+    # This rule sends incoming traffic to the CPE NAT IP, port 3391, to private IP 10.100.0.228, port 3389.
+    iptables -t nat -I ${PORT_FORWARDS_CHAIN} -p tcp --dport 3391 -m comment --comment "Minnie's workstation RDP" -j DNAT --to-destination 10.100.0.228:3389
+    # More rules can be added as necessary
+################## END CUSTOM PORT FORWARD CONFIG HERE ##################
+
+    # Don't touch anything below here...
+    iptables -t nat -I PREROUTING -i tun${BOND_ID} -d ${IP} -j ${PORT_FORWARDS_CHAIN} # Send appropriate traffic to chain
+}
+stop () {
+    remove
+}
+remove () {
+    iptables -t nat -D PREROUTING -i tun${BOND_ID} -d ${IP} -j ${PORT_FORWARDS_CHAIN}
+    iptables -t nat -F ${PORT_FORWARDS_CHAIN} # Flush chain
+    iptables -t nat -X ${PORT_FORWARDS_CHAIN} # Remove chain
+}
+
+# Avoid changing anything below here.
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    *)
+        echo "Usage: $0 {start|stop}"
+        exit 1
+        ;;
+esac
