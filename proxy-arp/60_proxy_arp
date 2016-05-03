@@ -1,0 +1,44 @@
+#!/bin/sh
+# Enable proxy ARP on eth0 or another interface.
+NAME="60_proxy_arp"
+INTERFACE="eth0"
+test -f /etc/default/firewall.d/60_proxy_arp && . /etc/default/firewall.d/60_proxy_arp
+
+start () {
+    log_progress_msg $NAME
+    echo 1 > /proc/sys/net/ipv4/conf/$INTERFACE/proxy_arp
+}
+stop () {
+    log_progress_msg $NAME
+    remove
+}
+remove () {
+    echo 0 > /proc/sys/net/ipv4/conf/$INTERFACE/proxy_arp
+}
+status () {
+    cat /proc/sys/net/ipv4/conf/$INTERFACE/proxy_arp
+}
+
+# You probably shouldn't edit anything below here.
+test -f /lib/lsb/init-functions && . /lib/lsb/init-functions
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart|force-reload)
+        stop
+        start
+        ;;
+    status)
+        status
+        exit 0
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|force-reload|status}"
+        exit 1
+        ;;
+esac
