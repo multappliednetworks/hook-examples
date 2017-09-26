@@ -23,7 +23,9 @@ For bonders, the variable are:
  - `BOND_CONNECTEDIP_INTERFACE`
 
 Each hook should be installed in the directory
-`/etc/bonding/tun.d/<tunnel_id>/` on its node type. For example, given bond
-123, on the aggregator, copy "aggregator-tun-ipv6-hook" to
-`/etc/bonding/tun.d/123/ipv6`, and on the bonder, copy
-"bonder-tun-ipv6-hook" to the same path.
+`/etc/bonding/tun.d/<tunnel_id>/` on its node type and be made executable. For
+example, given bond 123, on the aggregator, copy "aggregator-tun-ipv6-hook" to
+`/etc/bonding/tun.d/123/ipv6`, and on the bonder, copy "bonder-tun-ipv6-hook"
+to the same path. The hook files on both machines should be made executable.
+
+The `radvd` package should be installed on the bonder.
