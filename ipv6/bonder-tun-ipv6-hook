@@ -1,0 +1,56 @@
+#!/bin/bash
+# /etc/bonding/tun.d hook to route IPv6 through a bonding tunnel.
+#
+# Tun hooks are run with the "start" argument after a tun device is created and
+# with the "stop" argument before it is destroyed.
+#
+# Environment variables:
+#   ID: bond ID
+#   TUN_NAME: tunnel interface name (i.e. tun1)
+#   LOCAL_IP: local IP of the interface
+#   PEER_IP: IP of the interface peer
+
+BOND_TUNNEL_LOCAL_IPV6="2001:470:82f4:1::2"
+BOND_TUNNEL_PEER_IPV6="2001:470:82f4:1::1"
+BOND_TUNNEL_DELEGATED_IPV6="2001:470:82f4:2::/64"
+BOND_CONNECTEDIP_IPV6="2001:470:82f4:2::1/64"
+BOND_CONNECTEDIP_INTERFACE="eth0"
+
+start () {
+    remove 2> /dev/null
+    echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
+    ip addr add $BOND_TUNNEL_LOCAL_IPV6/64 dev $TUN_NAME
+    ip -6 route add ::/0 via $BOND_TUNNEL_PEER_IPV6 dev $TUN_NAME
+    ip addr add $BOND_CONNECTEDIP_IPV6 dev $BOND_CONNECTEDIP_INTERFACE
+    cat <<EOF > /etc/radvd.conf
+interface $BOND_CONNECTEDIP_INTERFACE
+{
+  AdvSendAdvert on;
+  prefix $BOND_TUNNEL_DELEGATED_IPV6 {};
+};
+EOF
+    radvd
+}
+
+stop () {
+    remove
+}
+remove () {
+    killall radvd
+    ip addr del $BOND_CONNECTEDIP_IPV6 dev $BOND_CONNECTEDIP_INTERFACE
+    ip addr del $BOND_TUNNEL_LOCAL_IPV6/64 dev $TUN_NAME
+}
+
+# Avoid changing anything below here.
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    *)
+        echo "Usage: $0 {start|stop}"
+        exit 1
+        ;;
+esac
