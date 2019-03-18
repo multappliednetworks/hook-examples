@@ -1,0 +1,104 @@
+#!/bin/bash
+#
+# Private WAN router space hooks are run with the "start" argument after a space is
+# added and with the "stop" argument before it is removed.
+#
+# Environment variables provided by bonding:
+#   SPACE_ID: the space ID
+#   SPACE_KEY: the space key
+#   SPACE_TABLE: the space routing table
+#   NODE_ID: the ID of the private WAN router
+#
+# Hook location:
+# /etc/bonding/privatewan-router-space.d/<SPACE_KEY>/example_hook
+
+SPACE="$SPACE_KEY"
+SPACE_VRF="${SPACE}-vrf"
+PWR_IP="$(ip -o r get to 8.8.8.8 | awk '{print $7}')"
+
+# Stores custom BIRD config
+BIRD_DIR="/etc/bonding/bird"
+CUSTOM_BIRD_CONFIG="${BIRD_DIR}/custom-external-bird.conf"
+CUSTOM_SPACE_CONFIG="${BIRD_DIR}/${SPACE}.conf"
+
+# Stores environment variables
+ENV="/etc/bonding/spaceprivatewan/${SPACE}"
+
+start () {
+    remove 2> /dev/null
+
+    # Make sure space config file exists before including it in BIRD config
+    touch $CUSTOM_SPACE_CONFIG
+    echo """include \"${CUSTOM_SPACE_CONFIG}\";""" >> $CUSTOM_BIRD_CONFIG
+
+    # Add space route table to a VRF interface
+    ip link add $SPACE_VRF type vrf table $SPACE_TABLE
+    ip link set dev $SPACE_VRF up
+
+    for g in $(ls $ENV) ; do
+        test -f ${ENV}/${g} && . ${ENV}/${g}
+        GRE="gw${GATEWAY}-${SPACE}"
+        BGP="${SPACE}_gw_${GATEWAY}"
+
+        # Set up GRE and enslave to VRF interface
+        ip tunnel add $GRE mode gre remote $GATEWAY_IP local $PWR_IP key $SPACE_ID ttl 225 dev ext
+        ip link set $GRE up
+        ip addr add $LOCAL_GRE_IP peer $REMOTE_GRE_IP dev $GRE
+        ip link set dev $GRE master $SPACE_VRF
+
+        # Append BGP protocol to custom space config file
+        echo """protocol bgp '${BGP}' {
+    import all;
+    export filter bgp_out;
+    preference 500;
+    table krt${SPACE_TABLE};
+    local as ${LOCAL_AS};
+    neighbor ${REMOTE_GRE_IP} as ${REMOTE_AS};
+    direct;
+    gateway direct;
+    connect retry time 10;
+    error wait time 5,30;
+    hold time 10;
+    startup hold time 10;
+}
+""" >> $CUSTOM_SPACE_CONFIG
+    done
+
+    pwanbirdc - configure soft ||:
+}
+
+stop () {
+    remove
+}
+
+remove () {
+    # Remove custom space config file from BIRD config and delete the file
+    sed -i "/${SPACE}.conf/d" $CUSTOM_BIRD_CONFIG
+    rm -f $CUSTOM_SPACE_CONFIG
+    pwanbirdc - configure soft ||:
+
+    # Delete GREs
+    for g in $(ls $ENV) ; do
+        test -f ${ENV}/${g} && . ${ENV}/${g}
+        GRE="gw${GATEWAY}-${SPACE}"
+        ip link del dev $GRE
+    done
+
+    # Delete VRF interface
+    ip link del dev $SPACE_VRF
+
+    true
+}
+# Avoid changing anything below here.
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    *)
+        echo "Usage: $0 {start|stop}"
+        exit 1
+        ;;
+esac
