@@ -58,6 +58,14 @@ Usage
         LOCAL_AS="65000"
         REMOTE_AS="65001"
 
+#. Create the custom config file for BIRD. Its contents will be auto-generated
+   by the hook, but the file needs to exist.
+
+   ::
+
+        mkdir -p /etc/bonding/bird
+        touch /etc/bonding/bird/custom-external-bird.conf
+
 #. If the space’s key is updated in the management server, the hook and variable
    directories for this space must be manually renamed to reflect the new key.
 #. After a space hook has been added, you must restart the space from the
