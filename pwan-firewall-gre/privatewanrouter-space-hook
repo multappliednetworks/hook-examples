@@ -15,6 +15,7 @@
 SPACE="$SPACE_KEY"
 SPACE_VRF="${SPACE}-vrf"
 PWR_IP="$(ip -o r get to 8.8.8.8 | awk '{print $7}')"
+BIRD_VERSION=$(bird --version |& cut -d ' ' -f 3)
 
 # Stores custom BIRD config
 BIRD_DIR="/etc/bonding/bird"
@@ -47,7 +48,26 @@ start () {
         ip link set dev $GRE master $SPACE_VRF
 
         # Append BGP protocol to custom space config file
-        echo """protocol bgp '${BGP}' {
+        if [[ $BIRD_VERSION =~ ^2 ]] ; then
+            echo """protocol bgp '${BGP}' {
+    local as ${LOCAL_AS};
+    neighbor ${REMOTE_GRE_IP} as ${REMOTE_AS};
+    direct;
+    connect retry time 10;
+    error wait time 5,30;
+    hold time 10;
+    startup hold time 10;
+    ipv4 {
+        import all;
+        export filter bgp_out;
+        preference 500;
+        gateway direct;
+        table krt${SPACE_TABLE}ipv4;
+    }
+}
+""" >> $CUSTOM_SPACE_CONFIG
+        else
+            echo """protocol bgp '${BGP}' {
     import all;
     export filter bgp_out;
     preference 500;
@@ -62,6 +82,7 @@ start () {
     startup hold time 10;
 }
 """ >> $CUSTOM_SPACE_CONFIG
+        fi
     done
 
     pwanbirdc - configure soft ||:
